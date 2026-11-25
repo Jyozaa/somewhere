@@ -4,7 +4,7 @@ Updated: 2026-11-25 (Phase 1 coordinator integration)
 
 ## Current phase
 
-Phase 2 — Echo and presence polish on an integrated Phase 1 foundation.
+Phase 1 — integrated foundation complete; character and Echo polish next.
 
 ## Repository
 
