@@ -11,7 +11,7 @@ Phase 2 — Echo and presence polish on an integrated Phase 1 foundation.
 - Origin: https://github.com/Jyozaa/somewhere.git
 - Integration branch: `main`
 - Baseline commit: `68fa20a` (Phase 0 scaffold, pushed)
-- Phase 1 integration commit: recorded in the commit history for this file
+- Phase 1 integration commit: `fe93809` (pushed to `origin/main`)
 - Visibility: public
 
 ## Orchestration
