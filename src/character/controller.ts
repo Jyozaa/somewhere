@@ -14,7 +14,13 @@ function dampAngle(current: number, target: number, lambda: number, dt: number):
   return current + delta * (1 - Math.exp(-lambda * dt));
 }
 
-export function createPlayerController(terrain: TerrainSystem, startX: number, startZ: number): PlayerController {
+export function createPlayerController(
+  terrain: TerrainSystem,
+  startX: number,
+  startZ: number,
+  /** Optional walkable surfaces layered over the terrain, such as the pier. */
+  surfaceHeightAt?: (x: number, z: number) => number | null,
+): PlayerController {
   const state: PlayerState = {
     position: new Vector3(startX, terrain.heightAt(startX, startZ), startZ),
     velocity: new Vector3(),
@@ -29,9 +35,12 @@ export function createPlayerController(terrain: TerrainSystem, startX: number, s
   let seatFacing = 0;
   let jumpLatch = false;
 
+  const heightOn = (x: number, z: number): number => surfaceHeightAt?.(x, z) ?? terrain.heightAt(x, z);
+
   const tryMove = (x: number, z: number): boolean => {
-    if (!terrain.isWalkable(x, z)) return false;
-    const h = terrain.heightAt(x, z);
+    const onSurface = surfaceHeightAt?.(x, z) !== null && surfaceHeightAt !== undefined;
+    if (!onSurface && !terrain.isWalkable(x, z)) return false;
+    const h = heightOn(x, z);
     const stepUp = h - state.position.y;
     if (stepUp > 1.1) return false;
     state.position.x = x;
@@ -71,7 +80,7 @@ export function createPlayerController(terrain: TerrainSystem, startX: number, s
         if (!tryMove(state.position.x, nz)) state.velocity.z *= 0.2;
       }
 
-      const ground = terrain.heightAt(state.position.x, state.position.z);
+      const ground = heightOn(state.position.x, state.position.z);
       if (state.grounded && input.jump && !jumpLatch) {
         verticalVelocity = JUMP_SPEED;
         state.grounded = false;

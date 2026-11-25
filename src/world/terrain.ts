@@ -64,6 +64,8 @@ export function coastlineRadius(theta: number): number {
     + Math.sin(theta * 5 + 2.2) * 4.5
     + Math.sin(theta * 7 - 0.6) * 2.4
     + Math.exp(-Math.pow((theta - 1.65) / 0.62, 2)) * 14
+    // A low spit holds the bottle cove at the waterline instead of under it.
+    + Math.exp(-Math.pow((theta - 2.32) / 0.2, 2)) * 7
     - Math.exp(-Math.pow((theta - 2.42) * 2.4, 2)) * 7;
 }
 
@@ -76,20 +78,20 @@ export function islandHeight(x: number, z: number): number {
   const land = smoothstep(coast + coastWidth * 0.35, coast - coastWidth, r);
   if (land <= 0.001) return -5.5 + fbm(x, z) * 0.4;
 
-  let h = 1.05 + fbm(x * 3.1, z * 3.1) * 1.55;
+  // The interior sits comfortably above the wave crests, so the ocean never
+  // floods a valley; the coast then falls away to the seabed.
+  let h = 2.35 + fbm(x * 3.1, z * 3.1) * 1.5;
   for (const hill of HILLS) {
     const d = Math.hypot(x - hill.x, z - hill.z);
     h += hill.height * Math.exp(-Math.pow(d / hill.radius, 2) * 1.65);
   }
   // A shallow valley through the middle keeps the cottage sheltered.
-  h -= 1.6 * Math.exp(-Math.pow((x - 0) / 26, 2) - Math.pow((z - 40) / 32, 2));
+  h -= 1.45 * Math.exp(-Math.pow((x - 0) / 26, 2) - Math.pow((z - 40) / 32, 2));
   // Cliff shelf for the bench: raised, then drops sharply westward.
   const benchD = Math.hypot(x + 60, z - 6);
   h += 2.2 * Math.exp(-Math.pow(benchD / 12, 2));
-  h *= Math.pow(land, westNorth > 0.55 ? 0.38 : 0.72);
-  h -= 1.1 * (1 - land);
-
-  return h;
+  const rise = westNorth > 0.55 ? 1.25 : 0.92;
+  return h * Math.pow(land, rise) - (1 - land) * 7.0;
 }
 
 function pathDistance(x: number, z: number): number {
@@ -152,8 +154,8 @@ export function createTerrain(): TerrainSystem {
     } else {
       color.copy(grass).lerp(grassLight, n * 0.55).lerp(grassDark, smoothstep(6, 14, y) * 0.4);
     }
-    if (p < 2.3 && y > 0.45 && slope < 0.7) {
-      color.lerp(pathCol, smoothstep(2.3, 0.7, p) * 0.9);
+    if (p < 1.9 && y > 0.6 && slope < 0.7) {
+      color.lerp(pathCol, smoothstep(1.9, 0.45, p) * 0.88);
     }
     // Painterly, low-frequency colour variation.
     const tint = 0.94 + fbm(x * 0.55, z * 0.55) * 0.12;

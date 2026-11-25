@@ -6,6 +6,7 @@ import {
   Group,
   IcosahedronGeometry,
   InstancedMesh,
+  MeshBasicMaterial,
   MeshStandardMaterial,
   Object3D,
   PlaneGeometry,
@@ -38,6 +39,17 @@ function paint(geometry: BufferGeometry, color: Color): BufferGeometry {
   return geometry;
 }
 
+function mergeParts(parts: BufferGeometry[]): BufferGeometry {
+  // Primitive geometries disagree about index buffers: cylinders are indexed,
+  // polyhedra are not. Merge a consistent non-indexed set.
+  const normalized = parts.map((part) => (part.index ? part.toNonIndexed() : part));
+  const merged = mergeGeometries(normalized, false);
+  if (!merged) throw new Error('Vegetation geometry could not be merged');
+  for (const part of normalized) part.dispose();
+  for (const part of parts) if (!normalized.includes(part)) part.dispose();
+  return merged;
+}
+
 function treeGeometry(): BufferGeometry {
   const parts: BufferGeometry[] = [];
   const trunk = paint(new CylinderGeometry(0.16, 0.34, 3.1, 7).translate(0, 1.55, 0), new Color(0x5e4d3d));
@@ -56,7 +68,7 @@ function treeGeometry(): BufferGeometry {
     g.rotateY(i * 0.7);
     parts.push(paint(g, new Color(greens[i % greens.length]!)));
   });
-  return mergeGeometries(parts, false) as BufferGeometry;
+  return mergeParts(parts);
 }
 
 function rockGeometry(): BufferGeometry {
@@ -70,10 +82,19 @@ function rockGeometry(): BufferGeometry {
 }
 
 function bladeGeometry(): BufferGeometry {
-  const single = new PlaneGeometry(0.13, 0.7, 1, 2);
-  single.translate(0, 0.35, 0);
-  const b = single.clone().rotateY(Math.PI / 2);
-  return mergeGeometries([single, b], false) as BufferGeometry;
+  const blade = (rotation: number): BufferGeometry => {
+    const geometry = new PlaneGeometry(0.17, 0.42, 1, 3);
+    geometry.translate(0, 0.21, 0);
+    const pos = geometry.attributes.position as BufferAttribute;
+    for (let i = 0; i < pos.count; i += 1) {
+      const t = pos.getY(i) / 0.42;
+      pos.setX(i, pos.getX(i) * (1 - t * 0.85) + t * t * 0.07);
+    }
+    geometry.rotateY(rotation);
+    return geometry;
+  };
+  const merged = mergeParts([blade(0), blade(Math.PI / 3), blade(-Math.PI / 3)]);
+  return merged;
 }
 
 export function createVegetation(terrain: TerrainSystem): VegetationSystem {
@@ -131,12 +152,12 @@ export function createVegetation(terrain: TerrainSystem): VegetationSystem {
   group.add(trees);
 
   // Hero tree beside the Echo bench, framing the ocean.
-  const heroX = WORLD.landmarks.bench.x + 6.5;
-  const heroZ = WORLD.landmarks.bench.z - 2.5;
+  const heroX = WORLD.landmarks.bench.x + 10.5;
+  const heroZ = WORLD.landmarks.bench.z - 5;
   const hero = new InstancedMesh(treeGeo, treeMat, 1);
   tmpObject.position.set(heroX, terrain.heightAt(heroX, heroZ), heroZ);
   tmpObject.rotation.set(0, 1.2, 0.03);
-  tmpObject.scale.set(1.5, 1.75, 1.5);
+  tmpObject.scale.set(1.25, 1.45, 1.25);
   tmpObject.updateMatrix();
   hero.setMatrixAt(0, tmpObject.matrix);
   hero.castShadow = true;
@@ -164,7 +185,9 @@ export function createVegetation(terrain: TerrainSystem): VegetationSystem {
   group.add(rocks);
 
   const bladeGeo = bladeGeometry();
-  const grassMat = new MeshStandardMaterial({ color: 0x9aab7d, roughness: 1, side: DoubleSide });
+  // Painted, not lit: thin crossed blades flip normal direction with the view,
+  // which makes a lit material read as black sticks. Fixed greens stay soft.
+  const grassMat = new MeshBasicMaterial({ color: 0x5f7350, side: DoubleSide });
   grassMat.onBeforeCompile = (shader) => {
     shader.uniforms.uTime = timeUniform;
     shader.vertexShader = 'uniform float uTime;\n' + shader.vertexShader.replace(
@@ -176,7 +199,8 @@ export function createVegetation(terrain: TerrainSystem): VegetationSystem {
        transformed.z += gust * 0.08 * max(0.0, position.y);`,
     );
   };
-  const grassCount = 5200;
+  const grassCount = 6200;
+  const grassTint = new Color();
   const grass = new InstancedMesh(bladeGeo, grassMat, grassCount);
   let placed = 0;
   let guard = 0;
@@ -187,18 +211,21 @@ export function createVegetation(terrain: TerrainSystem): VegetationSystem {
     const x = Math.cos(a) * r;
     const z = Math.sin(a) * r;
     const h = terrain.heightAt(x, z);
-    if (h < 1.05 || h > 13.5) continue;
-    if (terrain.slopeAt(x, z) > 0.62) continue;
+    if (h < 1.15 || h > 13) continue;
+    if (terrain.slopeAt(x, z) > 0.55) continue;
     tmpObject.position.set(x, h - 0.03, z);
     tmpObject.rotation.set(0, rand() * Math.PI * 2, 0);
-    const s = 0.65 + rand() * 0.9;
-    tmpObject.scale.set(s, s * (0.8 + rand() * 0.6), s);
+    const s = 0.65 + rand() * 0.45;
+    tmpObject.scale.set(s, s * (0.9 + rand() * 0.4), s);
     tmpObject.updateMatrix();
     grass.setMatrixAt(placed, tmpObject.matrix);
+    const shade = [0xffffff, 0xd6dfc7, 0xeef2e4, 0xc4d0b3][placed % 4]!;
+    grass.setColorAt(placed, grassTint.setHex(shade));
     placed += 1;
   }
   grass.count = placed;
   grass.instanceMatrix.needsUpdate = true;
+  if (grass.instanceColor) grass.instanceColor.needsUpdate = true;
   group.add(grass);
 
   return {

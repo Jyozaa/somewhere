@@ -51,6 +51,7 @@ export function createOcean(opts: { heightAt: (x: number, z: number) => number }
       uShallow: { value: new Vector3(0.4, 0.62, 0.58) },
       uFoam: { value: new Vector3(0.93, 0.92, 0.85) },
       uSky: { value: new Vector3(0.6, 0.72, 0.8) },
+      uFog: { value: new Vector3(0.8, 0.78, 0.72) },
       uDepth: { value: depthTexture },
       uWind: { value: 0.6 },
       uCameraPos: { value: new Vector3() },
@@ -77,20 +78,24 @@ export function createOcean(opts: { heightAt: (x: number, z: number) => number }
         vec3 pos = position;
         vec4 world = modelMatrix * vec4(pos, 1.0);
         float h = 0.0;
-        h += wave(world.xz, normalize(vec2(1.0, 0.35)), 0.075, 0.55, 0.55);
-        h += wave(world.xz, normalize(vec2(-0.4, 1.0)), 0.13, 0.9, 0.28);
-        h += wave(world.xz + 13.0, normalize(vec2(0.7, -0.7)), 0.28, 1.35, 0.11);
+        vec2 d1 = normalize(vec2(1.0, 0.35));
+        vec2 d2 = normalize(vec2(-0.4, 1.0));
+        vec2 d3 = normalize(vec2(0.7, -0.7));
+        h += sin(dot(world.xz, d1) * 0.075 + uTime * 0.5) * 0.36;
+        h += sin(dot(world.xz, d2) * 0.13 + uTime * 0.85) * 0.17;
+        h += sin(dot(world.xz + 13.0, d3) * 0.29 + uTime * 1.25) * 0.07;
         h *= 0.7 + uWind * 0.55;
         world.y += h;
         vWorld = world.xyz;
         vWave = h;
 
-        // Analytic-ish normal from finite differences of the same wave field.
-        float e = 0.6;
-        float hx = 0.0;
-        float hz = 0.0;
-        hx += cos(dot(world.xz, normalize(vec2(1.0, 0.35))) * 0.075 + uTime * 0.55) * 0.075 * 0.55;
-        hz += cos(dot(world.xz, normalize(vec2(-0.4, 1.0))) * 0.13 + uTime * 0.9) * 0.13 * 0.28;
+        // Analytic normal of the same wave field.
+        float hx = cos(dot(world.xz, d1) * 0.075 + uTime * 0.5) * 0.075 * 0.36 * d1.x
+                 + cos(dot(world.xz, d2) * 0.13 + uTime * 0.85) * 0.13 * 0.17 * d2.x
+                 + cos(dot(world.xz + 13.0, d3) * 0.29 + uTime * 1.25) * 0.29 * 0.07 * d3.x;
+        float hz = cos(dot(world.xz, d1) * 0.075 + uTime * 0.5) * 0.075 * 0.36 * d1.y
+                 + cos(dot(world.xz, d2) * 0.13 + uTime * 0.85) * 0.13 * 0.17 * d2.y
+                 + cos(dot(world.xz + 13.0, d3) * 0.29 + uTime * 1.25) * 0.29 * 0.07 * d3.y;
         vNormalW = normalize(vec3(-hx, 1.0, -hz));
         gl_Position = projectionMatrix * viewMatrix * world;
       }
@@ -103,6 +108,7 @@ export function createOcean(opts: { heightAt: (x: number, z: number) => number }
       uniform vec3 uShallow;
       uniform vec3 uFoam;
       uniform vec3 uSky;
+      uniform vec3 uFog;
       uniform sampler2D uDepth;
       uniform vec3 uCameraPos;
       uniform float uWind;
@@ -117,25 +123,40 @@ export function createOcean(opts: { heightAt: (x: number, z: number) => number }
 
         vec3 viewDir = normalize(uCameraPos - vWorld);
         vec3 n = normalize(vNormalW);
-        float fresnel = pow(1.0 - clamp(dot(viewDir, n), 0.0, 1.0), 3.0);
-        vec3 deep = uDeep;
-        vec3 shallow = uShallow;
-        float shoreMix = smoothstep(0.0, 5.0, waterDepth);
-        vec3 col = mix(shallow, deep, shoreMix);
-        col = mix(col, uSky, fresnel * 0.55);
+        // Fine ripple detail on top of the swell normal.
+        float detail = 1.0 - smoothstep(10.0, 90.0, length(vWorld.xz - uCameraPos.xz));
+        n = normalize(n + vec3(
+          sin(vWorld.x * 0.85 + uTime * 0.7) * 0.05 * detail,
+          0.0,
+          cos(vWorld.z * 1.05 - uTime * 0.62) * 0.05 * detail
+        ));
+        float fresnel = pow(1.0 - clamp(dot(viewDir, n), 0.0, 1.0), 4.0);
+        float shoreMix = smoothstep(0.0, 6.5, waterDepth);
+        vec3 col = mix(uShallow, uDeep, shoreMix);
+        // Swell shading and slow colour drift keep the surface alive at rest.
+        float crest = clamp(vWave / 0.55, -1.0, 1.0);
+        col *= 1.0 + crest * 0.07;
+        float drift = sin(vWorld.x * 0.041 + uTime * 0.02) * sin(vWorld.z * 0.037 - uTime * 0.017);
+        col *= 0.965 + drift * 0.05;
+        col = mix(col, uSky, fresnel * 0.42);
 
         vec3 sunDir = normalize(uSunDir);
         vec3 halfway = normalize(sunDir + viewDir);
-        float spec = pow(max(dot(n, halfway), 0.0), 220.0);
-        float sparkle = pow(max(dot(n, halfway), 0.0), 28.0) * 0.10;
-        col += uSunColor * (spec * 1.4 + sparkle);
+        float spec = pow(max(dot(n, halfway), 0.0), 160.0);
+        float sparkle = pow(max(dot(n, halfway), 0.0), 22.0) * 0.1;
+        float sheen = pow(max(dot(n, halfway), 0.0), 8.0) * 0.03;
+        col += uSunColor * (spec * 1.1 + sparkle + sheen);
 
-        // Foam: animated contour bands where the water meets the shore.
-        float wobble = sin(vWorld.x * 0.9 + uTime * 0.8) * 0.18 + sin(vWorld.z * 1.3 - uTime * 0.6) * 0.12;
-        float foamBand = 1.0 - smoothstep(0.0, 1.15 + wobble, waterDepth);
-        float foamLine = smoothstep(0.05, 0.65, sin(waterDepth * 5.0 - uTime * 1.2) * 0.5 + 0.5) * (1.0 - smoothstep(0.5, 2.2, waterDepth));
-        float foam = clamp(foamBand * 0.85 + foamLine * 0.4, 0.0, 1.0);
-        col = mix(col, uFoam, foam * 0.8);
+        // Foam: broken, wandering bands rather than a contour ring.
+        float wobble = sin(vWorld.x * 0.55 + uTime * 0.55) * 0.45
+                     + sin(vWorld.z * 0.83 - uTime * 0.72) * 0.32
+                     + sin((vWorld.x + vWorld.z) * 1.9 + uTime * 1.1) * 0.14;
+        float foamBand = 1.0 - smoothstep(0.0, 1.35 + wobble, waterDepth);
+        float foamLine = smoothstep(0.35, 0.85, sin(waterDepth * 3.4 - uTime * 1.05 + wobble * 2.2) * 0.5 + 0.5)
+                       * (1.0 - smoothstep(1.0, 3.2, waterDepth));
+        float crestFoam = smoothstep(0.34, 0.5, vWave) * (1.0 - smoothstep(3.0, 9.0, waterDepth)) * 0.35;
+        float foam = clamp(foamBand * 0.5 + foamLine * 0.32 + crestFoam, 0.0, 1.0);
+        col = mix(col, uFoam, foam * 0.62);
 
         // Fine painterly ripple texture.
         float grain = sin(vWorld.x * 3.1 + uTime * 0.4) * sin(vWorld.z * 2.7 - uTime * 0.3);
@@ -143,8 +164,8 @@ export function createOcean(opts: { heightAt: (x: number, z: number) => number }
 
         // Distant haze hides the edge of the plane.
         float dist = length(vWorld.xz - uCameraPos.xz);
-        float haze = smoothstep(180.0, 430.0, dist);
-        col = mix(col, uSky, haze * 0.85);
+        float haze = smoothstep(120.0, 360.0, dist);
+        col = mix(col, uFog, haze * 0.92);
 
         gl_FragColor = vec4(col, 1.0);
         #include <colorspace_fragment>
@@ -174,6 +195,7 @@ export function createOcean(opts: { heightAt: (x: number, z: number) => number }
       uniforms.uShallow!.value = new Vector3(((env.waterShallow >> 16) & 255) / 255, ((env.waterShallow >> 8) & 255) / 255, (env.waterShallow & 255) / 255);
       uniforms.uFoam!.value = new Vector3(((env.waterFoam >> 16) & 255) / 255, ((env.waterFoam >> 8) & 255) / 255, (env.waterFoam & 255) / 255);
       uniforms.uSky!.value = new Vector3(((env.skyHorizon >> 16) & 255) / 255, ((env.skyHorizon >> 8) & 255) / 255, (env.skyHorizon & 255) / 255);
+      uniforms.uFog!.value = new Vector3(((env.fogColor >> 16) & 255) / 255, ((env.fogColor >> 8) & 255) / 255, (env.fogColor & 255) / 255);
       (uniforms.uCameraPos!.value as Vector3).copy(camera.position);
     },
     dispose() {

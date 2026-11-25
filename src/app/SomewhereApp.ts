@@ -32,7 +32,7 @@ import type {
 import { PLAYER_PALETTES, WORLD } from '../config/world';
 import { createTerrain } from '../world/terrain';
 import { createVegetation } from '../world/vegetation';
-import { createLandmarks } from '../world/landmarks';
+import { createLandmarks, pierHeightAt } from '../world/landmarks';
 import { createOcean } from '../rendering/ocean';
 import { createSky } from '../rendering/sky';
 import { createAtmosphere } from '../rendering/atmosphere';
@@ -156,7 +156,7 @@ export class SomewhereApp {
     this.scene.add(this.contributions);
 
     this.cameraSystem = createCameraSystem(this.terrain, window.innerWidth / window.innerHeight);
-    this.player = createPlayerController(this.terrain, WORLD.start.x, WORLD.start.z);
+    this.player = createPlayerController(this.terrain, WORLD.start.x, WORLD.start.z, pierHeightAt);
     this.player.state.yaw = WORLD.start.yaw;
     this.character = createCharacter(PLAYER_PALETTES[this.paletteIndex] ?? PLAYER_PALETTES[0]!);
     this.scene.add(this.character.object);
@@ -207,6 +207,24 @@ export class SomewhereApp {
     this.player.teleport(WORLD.start.x, WORLD.start.z);
     this.player.state.yaw = WORLD.start.yaw;
     this.cameraSystem.snap();
+
+    // Screenshot and QA affordance: start at a known anchor, e.g. ?at=bench.
+    const requested = new URLSearchParams(window.location.search).get('at');
+    const target = requested ? this.anchors.find((anchor) => anchor.id === requested) : undefined;
+    if (target) {
+      this.player.teleport(target.position.x, target.position.z);
+      const pierY = pierHeightAt(target.position.x, target.position.z);
+      if (pierY !== null) this.player.state.position.y = pierY;
+      this.player.state.yaw = target.facing ?? Math.atan2(-target.position.x, -target.position.z);
+      if (target.id === 'bench') this.sit(target);
+      this.cameraSystem.update(1 / 60, {
+        player: this.player.state,
+        mode: this.cameraMode(),
+        reducedMotion: true,
+        manualYawOffset: 0,
+        viewportAspect: window.innerWidth / Math.max(1, window.innerHeight),
+      });
+    }
     const firstVisit = this.recentVisits === 0;
     this.world.visits += 1;
     this.world.lastVisit = Date.now();

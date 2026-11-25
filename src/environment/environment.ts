@@ -2,7 +2,7 @@ import { Color, MathUtils, Vector3 } from 'three';
 import type { EnvironmentSample, WeatherKind } from '../core/contracts';
 import { WORLD_CLOCK } from '../config/world';
 
-const DAY_SECONDS = 86_400;
+const DAY_MS = 86_400_000;
 
 /** Smoothly interpolated colour keys for the artistic window 15:00-21:00. */
 interface SkyKey {
@@ -20,10 +20,10 @@ interface SkyKey {
 }
 
 const SKY_KEYS: SkyKey[] = [
-  { hour: 15.0, zenith: 0x5f8fa6, horizon: 0xd8d3b7, sun: 0xfff1d4, sunIntensity: 2.5, fog: 0xc7cec4, fogDensity: 0.0042, deep: 0x24465a, shallow: 0x6fa39a, exposure: 1.0, golden: 0.0 },
-  { hour: 17.4, zenith: 0x5f86a0, horizon: 0xe6c9a4, sun: 0xffdda6, sunIntensity: 2.35, fog: 0xd2c6ae, fogDensity: 0.0044, deep: 0x27485a, shallow: 0x77a49a, exposure: 1.02, golden: 0.35 },
-  { hour: 18.7, zenith: 0x54748f, horizon: 0xf0b98f, sun: 0xffb877, sunIntensity: 2.1, fog: 0xd7b79f, fogDensity: 0.0048, deep: 0x2a4358, shallow: 0x7e9d93, exposure: 1.06, golden: 1.0 },
-  { hour: 19.7, zenith: 0x3f5878, horizon: 0xc98c86, sun: 0xff9d70, sunIntensity: 1.55, fog: 0xa98e94, fogDensity: 0.0055, deep: 0x23374c, shallow: 0x6a8187, exposure: 1.08, golden: 0.7 },
+  { hour: 15.0, zenith: 0x5f8fa6, horizon: 0xd8d3b7, sun: 0xfff1d4, sunIntensity: 2.15, fog: 0xc7cec4, fogDensity: 0.0042, deep: 0x24465a, shallow: 0x6fa39a, exposure: 1.0, golden: 0.0 },
+  { hour: 17.4, zenith: 0x5f86a0, horizon: 0xe6c9a4, sun: 0xffe3bd, sunIntensity: 1.9, fog: 0xd2c6ae, fogDensity: 0.0044, deep: 0x27485a, shallow: 0x77a49a, exposure: 1.02, golden: 0.35 },
+  { hour: 18.7, zenith: 0x54748f, horizon: 0xf0b98f, sun: 0xffd0a2, sunIntensity: 1.55, fog: 0xd7b79f, fogDensity: 0.0048, deep: 0x2a4358, shallow: 0x7e9d93, exposure: 1.06, golden: 1.0 },
+  { hour: 19.7, zenith: 0x3f5878, horizon: 0xc98c86, sun: 0xffb894, sunIntensity: 1.2, fog: 0xa98e94, fogDensity: 0.0055, deep: 0x23374c, shallow: 0x6a8187, exposure: 1.08, golden: 0.7 },
   { hour: 20.35, zenith: 0x2a3c5b, horizon: 0x7a7089, sun: 0xd48f92, sunIntensity: 0.7, fog: 0x6f7488, fogDensity: 0.0062, deep: 0x182a3d, shallow: 0x49636c, exposure: 1.12, golden: 0.25 },
   { hour: 21.0, zenith: 0x17283d, horizon: 0x34465d, sun: 0x8fa6bd, sunIntensity: 0.22, fog: 0x33465a, fogDensity: 0.007, deep: 0x0e1e2d, shallow: 0x2e4750, exposure: 1.18, golden: 0.0 },
 ];
@@ -40,12 +40,12 @@ function lerpColor(a: number, b: number, t: number, out: Color): number {
 }
 
 function getWorldHour(now = Date.now()): number {
-  const dayFraction = ((now % DAY_SECONDS) + DAY_SECONDS) % DAY_SECONDS / DAY_SECONDS;
+  const dayFraction = ((now % DAY_MS) + DAY_MS) % DAY_MS / DAY_MS;
   return WORLD_CLOCK.startHour + dayFraction * (WORLD_CLOCK.endHour - WORLD_CLOCK.startHour);
 }
 
 function weatherForDay(now: number): WeatherKind {
-  const day = Math.floor(now / DAY_SECONDS);
+  const day = Math.floor(now / DAY_MS);
   const r = Math.abs(Math.sin(day * 78.233 + 14.7) * 43758.5453) % 1;
   if (r < 0.62) return 'clear';
   if (r < 0.8) return 'overcast';

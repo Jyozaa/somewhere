@@ -15,6 +15,8 @@ npm run dev
 
 Open http://localhost:5173. Choose **Enter the island**. Sound starts after that gesture, as browsers require.
 
+For visual QA, append `?at=bench`, `?at=pierEnd`, `?at=lighthouse` (or any other anchor id) to start at that anchor. This only changes the starting position; it does not create or fake another visitor.
+
 ## Quality gates
 
 ```bash
